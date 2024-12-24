@@ -1,0 +1,23 @@
+antennas:
+- description: EFHW 10/15/20/40/80m
+  fallback: true
+  frequencies: []
+  key: 655527342
+  name: Antenna 1
+- description: Dipole 10/20m
+  fallback: false
+  frequencies:
+  - f_begin: 14000000
+    f_end: 14350000
+  - f_begin: 28000000
+    f_end: 29700000
+  key: 655527339
+  name: Antenna 4
+autoswitch: true
+esphome:
+  device: antenna-switcher.local
+  key: <top secret>
+  port: 6053
+rig_connect:
+  device: localhost
+  port: 4532
