@@ -13,7 +13,9 @@ import logging
 
 import yaml
 from pathlib import Path
+import  wx.lib.newevent
 
+CallbackEvent, EVT_CALLBACK_EVENT = wx.lib.newevent.NewEvent()
 DEBUG = True
 
 
@@ -46,7 +48,7 @@ class Frame(wx.Frame):
     config = {}
     config_file = None
 
-    async def test(self):
+    async def setup(self):
             try:
                 await self.api.connect(login=True)
                 sleep(1.5)
@@ -72,11 +74,17 @@ class Frame(wx.Frame):
             # List all entities of the device
             
 
+    def gui_refresh_handler(self, evt):
+        ''' We refresh the gui here after an event coming from the ESPHome change '''
+        self.rb[evt.rb_id].SetValue(evt.state)
+        self.ant_label_lbl.SetLabel(evt.desc)
+        self.logger.info(f"Switched to {evt.desc}")
+
     def __init__(self, title):
         self.logger = logging.getLogger(__name__)
-    
-        wx.Frame.__init__(self, None, title=title, size=(350,480))
         
+        wx.Frame.__init__(self, None, title=title, size=(350,480))
+
         info_panel  = wx.Panel(self)
         self.cb_auto = wx.Choice(info_panel, -1, choices = ['Disregard', 'None'], style=wx.CB_READONLY)
         
@@ -144,7 +152,7 @@ class Frame(wx.Frame):
                 self.config['esphome']['key'] = td.GetValue()
             self.api = aioesphomeapi.APIClient(address=self.config['esphome']['device'], port=self.config['esphome']['port'], password="", noise_psk=self.config['esphome']['key'])
 
-            asyncio.run(self.test())
+            asyncio.run(self.setup())
             if not self.esp_connect:
                 exit(0)
 
@@ -168,7 +176,7 @@ class Frame(wx.Frame):
         self.ant_label_lbl = wx.StaticText(info_panel, label = "", style = wx.ALIGN_CENTER)
 
         self.status_label = wx.StaticText(status_panel, label = " ", style = wx.ALIGN_CENTER)
-        self.status_label2 = wx.StaticText(status_panel, label = "#", style = wx.ALIGN_CENTER)
+        self.status_label2 = wx.StaticText(status_panel, label = "--:--:--", style = wx.ALIGN_CENTER)
 
         self.auto_cb = wx.CheckBox(info_panel, -1, 'Autoswitch', (10, 10))
         self.auto_cb.SetValue(self.config['autoswitch'])
@@ -213,6 +221,9 @@ class Frame(wx.Frame):
         my_sizer.Add(status_panel, 0, wx.ALL | wx.EXPAND, 5) 
         self.SetSizerAndFit(my_sizer)
 
+        # Make the GUI responsive to the event coming from the ESPHome device 
+        self.Bind(EVT_CALLBACK_EVENT, self.gui_refresh_handler)
+
         self._running = True
         t1 = threading.Thread(target=self.gui)
         t1.daemon = True
@@ -225,6 +236,7 @@ class Frame(wx.Frame):
             ant.setBtnId(self.rb[i].GetId())
             i = i + 1
         
+
         t2 = threading.Thread(target=self.worker)
         t2.daemon = True
         t2.start()
@@ -235,8 +247,10 @@ class Frame(wx.Frame):
         self.last_freq = 0
             
     def SetVal(self, event):
-        self.api.switch_command(self.getKeyforId(event.GetId()), True)
-
+        try:
+            self.api.switch_command(self.getKeyforId(event.GetId()), True)
+        except Exception as e:
+            print(e)
 
     def getKeyforId(self, id):
         for ant in self._antennas:
@@ -253,31 +267,29 @@ class Frame(wx.Frame):
         while self._running:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                        self.status_label.SetLabel(f"Connecting to rigctl on {HOST}:{PORT}")
+                        wx.CallAfter(self.status_label.SetLabel, f"Connecting to rigctl on {HOST}:{PORT}")
                         sleep(3)
                         s.settimeout(3)
                         s.connect((HOST, PORT))
                         x = s.makefile("rb")
 
-                        self.status_label.SetLabel(f"Connected to rigctl on {HOST}:{PORT}")
+                        wx.CallAfter(self.status_label.SetLabel, f"Connected to rigctl on {HOST}:{PORT}")
                         while self._running:
-                            if a == 1:
-                                self.status_label2.SetLabel("#")
-                                a = 0
-                            else:
-                                self.status_label2.SetLabel(" ")
-                                a = 1
-                            print("ping")
+                            
+                            now = datetime.now()
+                            wx.CallAfter(self.status_label2.SetLabel, "{}".format(now.strftime("%H:%M:%S")))
+                            #print("ping@{}".format(now.strftime("%H:%M:%S")))
                             s.send(b"f\n")
                             data = x.readline().strip()
                             try:
                                 freq = int(data.decode('utf-8'))
                             except Exception as e:
                                 self.logger.error(e)
+                                sleep(1)
                                 continue
 
                             if self.last_freq != freq:
-                                self.freq_label_lbl.SetLabel("{:.6f}MHz".format(freq/1000000.0))
+                                wx.CallAfter(self.freq_label_lbl.SetLabel, "{:.6f}MHz".format(freq/1000000.0))
 
                             fallback_ant = None
                             ant_sel = self.cb_auto.GetSelection()
@@ -293,7 +305,7 @@ class Frame(wx.Frame):
                                         if freq >= f['f_begin'] and freq < f['f_end'] and self.last_freq != freq:
                                             if active_antenna != ant:
                                                 self.api.switch_command(ant.key, True)
-                                            self.status_label.SetLabel('For f={:.6f}MHz switching to {} @ {}z\n'.format(freq/1000000.0, ant.name, now.strftime("%H:%M:%S")))
+                                            wx.CallAfter(self.status_label.SetLabel, 'For f={:.6f}MHz switching to {} @ {}z\n'.format(freq/1000000.0, ant.name, now.strftime("%H:%M:%S")))
                                             active_antenna = ant
                                             ant_sel = 0
                                             break
@@ -303,15 +315,15 @@ class Frame(wx.Frame):
                                         for ant in self._antennas:
                                             self.api.switch_command(ant.key, False)
                                         active_antenna = None
-                                        self.status_label.SetLabel('No Antennas\n')
-                                        self.ant_label_lbl.SetLabel('None')
+                                        wx.CallAfter(self.status_label.SetLabel, 'No Antennas\n')
+                                        wx.CallAfter(self.ant_label_lbl.SetLabel, 'None')
                                     else:
                                         self.api.switch_command(fallback_ant.key, True)
-                                        self.status_label.SetLabel('For f={:.6f}MHz switching to {} @ {}z\n'.format(freq/1000000.0, fallback_ant.name, now.strftime("%H:%M:%S")))
+                                        wx.CallAfter(self.status_label.SetLabel, 'For f={:.6f}MHz switching to {} @ {}z\n'.format(freq/1000000.0, fallback_ant.name, now.strftime("%H:%M:%S")))
                                         active_antenna = fallback_ant
                                 
                             elif self.last_freq != freq:
-                                self.status_label.SetLabel('Autoswitch is off')
+                                wx.CallAfter(self.status_label.SetLabel, 'Autoswitch is off')
 
                             self.last_freq = freq
                             sleep(1)
@@ -319,23 +331,26 @@ class Frame(wx.Frame):
                 self.logger.error(e)
             sleep(1)
 
-
-
     def change_callback(self, state):
         if type(state) is aioesphomeapi.SwitchState:
             self.logger.debug(state)
             i = 0
+            desc = ""
+            rb_id = 0
             for ant in self._antennas:
 
                 if state.key == ant.key and len(self.rb) > 0:
-                    self.rb[i].SetValue(state.state)
+                    #self.rb[i].SetValue(state.state)
+                    rb_id = i
                     if state.state == True:
-                        self.ant_label_lbl.SetLabel(ant.description)
+                        desc = ant.description
                     break
 
                 i = i + 1
-            
-            wx.CallAfter(self.Refresh)
+            #create the event
+            evt = CallbackEvent(rb_id = rb_id, state = state.state, desc = desc)
+            #post the event
+            wx.PostEvent(self, evt)
 
     def gui(self):
         self.loop = asyncio.new_event_loop()
@@ -373,6 +388,6 @@ class Frame(wx.Frame):
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', filename='ant_switcher.log', encoding='utf-8', level=logging.DEBUG)
     app = wx.App(redirect=False)
-    top = Frame("Antenna Controller v0.9")
+    top = Frame("Antenna Controller v1.0")
     top.Show()
     app.MainLoop()      
