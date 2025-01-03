@@ -2,6 +2,11 @@ import wx
 import threading
 import socket
 import aioesphomeapi
+from aioesphomeapi.reconnect_logic import (
+    MAXIMUM_BACKOFF_TRIES,
+    ReconnectLogic,
+    ReconnectLogicState,
+)
 from time import sleep
 import asyncio
 import json
@@ -9,14 +14,18 @@ import io
 import os
 import sys
 from datetime import datetime
+import tzlocal
 import logging
-
+from logging.handlers import RotatingFileHandler
+from apscheduler.schedulers.background import BackgroundScheduler
 import yaml
 from pathlib import Path
 import  wx.lib.newevent
 
 CallbackEvent, EVT_CALLBACK_EVENT = wx.lib.newevent.NewEvent()
-DEBUG = True
+StalledEvent, EVT_STALLED_EVENT = wx.lib.newevent.NewEvent()
+
+scheduler = BackgroundScheduler()
 
 
 class Antenna():
@@ -43,7 +52,7 @@ class Frame(wx.Frame):
 
     _antennas = []
     _running = False
-    esp_connect = False
+    _esp_connect = False
     rb = []
     config = {}
     config_file = None
@@ -52,7 +61,7 @@ class Frame(wx.Frame):
             try:
                 await self.api.connect(login=True)
                 sleep(1.5)
-                self.esp_connect = True
+                self._esp_connect = True
                 entities = await self.api.list_entities_services()
                 self._antennas = []
                 self.cb_auto.Clear()
@@ -82,11 +91,12 @@ class Frame(wx.Frame):
 
     def __init__(self, title):
         self.logger = logging.getLogger(__name__)
-        
-        wx.Frame.__init__(self, None, title=title, size=(350,480))
-
-        info_panel  = wx.Panel(self)
-        self.cb_auto = wx.Choice(info_panel, -1, choices = ['Disregard', 'None'], style=wx.CB_READONLY)
+        self.logger.addHandler(RotatingFileHandler('ant_switcher.log', maxBytes=1024 * 1000, backupCount=1))
+    
+        wx.Frame.__init__(self, None, title=title, size=(400, 300))
+        panel       = wx.Panel(self)
+        info_panel    = wx.Panel(panel)
+        self.cb_auto = wx.Choice(info_panel, -1, choices = ['Disregard', 'None'], style = wx.CB_READONLY)
         
         
         # get the config file from three locations
@@ -153,46 +163,43 @@ class Frame(wx.Frame):
             self.api = aioesphomeapi.APIClient(address=self.config['esphome']['device'], port=self.config['esphome']['port'], password="", noise_psk=self.config['esphome']['key'])
 
             asyncio.run(self.setup())
-            if not self.esp_connect:
+            if not self._esp_connect:
                 exit(0)
 
         self.logger.debug(self.config)
         self.cb_auto.Bind(wx.EVT_COMBOBOX, self.onComboBoxSelect)
 
-        panel       = wx.Panel(self)
-        rb_panel    = wx.Panel(self)
         
-        status_panel  = wx.Panel(self)
+        
+        rb_panel    = wx.Panel(panel)
+        status_panel  = wx.Panel(panel , style= wx.BORDER_SIMPLE)
 
-        my_sizer    = wx.BoxSizer(wx.VERTICAL) 
+        main_sizer    = wx.BoxSizer(wx.VERTICAL) 
         #panel_sizer = wx.BoxSizer(wx.VERTICAL) 
         rb_sizer    = wx.BoxSizer(wx.VERTICAL) 
-        gridSizer   = wx.GridSizer(rows=4, cols=2, hgap=5, vgap=5)
-        sts_gridSizer = wx.BoxSizer(wx.HORIZONTAL)
+        info_sizer   = wx.GridSizer(rows=4, cols=2, hgap=0, vgap=0)
+        sts_info_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.freq_label_text = wx.StaticText(info_panel, label = "Frequency:", style = wx.ALIGN_LEFT)
+        freq_label_text = wx.StaticText(info_panel, label = "Frequency:", style = wx.ALIGN_LEFT)
         self.freq_label_lbl = wx.StaticText(info_panel, label = "-.------MHz", style = wx.ALIGN_CENTER)
-        self.ant_label_text = wx.StaticText(info_panel, label = "Active Antenna:", style = wx.ALIGN_LEFT)
+        ant_label_text = wx.StaticText(info_panel, label = "Active Antenna:", style = wx.ALIGN_LEFT)
         self.ant_label_lbl = wx.StaticText(info_panel, label = "", style = wx.ALIGN_CENTER)
+        fallback_text = wx.StaticText(info_panel, label = "Fallback:", style = wx.ALIGN_LEFT)
 
-        self.status_label = wx.StaticText(status_panel, label = " ", style = wx.ALIGN_CENTER)
-        self.status_label2 = wx.StaticText(status_panel, label = "--:--:--", style = wx.ALIGN_CENTER)
-
+        self.status_label = wx.StaticText(status_panel, label = "Trying to connect to the antenna switcher ...", style = wx.ST_ELLIPSIZE_END | wx.ALIGN_LEFT)
+        self.status_label2 = wx.StaticText(status_panel, label = "99:99:99", style = wx.ALIGN_RIGHT)
         self.auto_cb = wx.CheckBox(info_panel, -1, 'Autoswitch', (10, 10))
         self.auto_cb.SetValue(self.config['autoswitch'])
 
-        fallback_text = wx.StaticText(info_panel, label = "Fallback:", style = wx.ALIGN_LEFT)
-        
-        
 
-        gridSizer.Add(self.freq_label_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-        gridSizer.Add(self.freq_label_lbl, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-        gridSizer.Add(self.ant_label_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-        gridSizer.Add(self.ant_label_lbl, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-        gridSizer.Add(self.auto_cb, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-        gridSizer.Add((0,0), proportion=1)
-        gridSizer.Add(fallback_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-        gridSizer.Add(self.cb_auto, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+        info_sizer.Add(freq_label_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+        info_sizer.Add(self.freq_label_lbl, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+        info_sizer.Add(ant_label_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+        info_sizer.Add(self.ant_label_lbl, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+        info_sizer.Add(self.auto_cb, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+        info_sizer.Add((0,0))
+        info_sizer.Add(fallback_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+        info_sizer.Add(self.cb_auto, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
         
         i = 0
         for ant in self._antennas:
@@ -203,31 +210,24 @@ class Frame(wx.Frame):
             rb_sizer.Add(self.rb[i], 1, wx.ALL | wx.EXPAND, 0)
             i = i + 1
         
-        sts_gridSizer.Add(self.status_label, 1, wx.ALL | wx.EXPAND, 0) 
-        sts_gridSizer.Add(self.status_label2, 0, wx.ALL | wx.EXPAND, 0) 
+        sts_info_sizer.Add(self.status_label, 1, wx.ALL, 3) 
+        sts_info_sizer.Add(self.status_label2, 0, wx.ALL, 3) 
 
         #self.editname = wx.TextCtrl(panel, size=(140, 40), style= wx.TE_MULTILINE | wx.SUNKEN_BORDER)
         #panel_sizer.Add(self.editname, 1, wx.ALL | wx.EXPAND, 5) 
-       
         
-        info_panel.SetSizer(gridSizer)
+        info_panel.SetSizer(info_sizer)
         #panel.SetSizer(panel_sizer)
         rb_panel.SetSizer(rb_sizer)
-        status_panel.SetSizer(sts_gridSizer)
+        status_panel.SetSizer(sts_info_sizer)
 
-        my_sizer.Add(info_panel, 0, wx.ALL | wx.EXPAND, 5)
-        #my_sizer.Add(panel, 1, wx.ALL | wx.EXPAND, 5) 
-        my_sizer.Add(rb_panel, 0, wx.ALL | wx.EXPAND, 5) 
-        my_sizer.Add(status_panel, 0, wx.ALL | wx.EXPAND, 5) 
-        self.SetSizerAndFit(my_sizer)
+        main_sizer.Add(info_panel, 0, wx.ALL | wx.EXPAND, 5)
+        #main_sizer.Add(panel, 1, wx.ALL | wx.EXPAND, 5) 
+        main_sizer.Add(rb_panel, 0, wx.ALL | wx.EXPAND, 5) 
+        main_sizer.Add(status_panel, 0, wx.ALL | wx.EXPAND, 0) 
+        panel.SetSizerAndFit(main_sizer)
+        #self.SetSizer(main_sizer)
 
-        # Make the GUI responsive to the event coming from the ESPHome device 
-        self.Bind(EVT_CALLBACK_EVENT, self.gui_refresh_handler)
-
-        self._running = True
-        t1 = threading.Thread(target=self.gui)
-        t1.daemon = True
-        t1.start()
         
         i = 0
         for ant in self._antennas:
@@ -237,9 +237,18 @@ class Frame(wx.Frame):
             i = i + 1
         
 
-        t2 = threading.Thread(target=self.worker)
-        t2.daemon = True
-        t2.start()
+        # Make the GUI responsive to the event coming from the ESPHome device 
+        self.Bind(EVT_CALLBACK_EVENT, self.gui_refresh_handler)
+        self._running = True
+        self.api_worker_thread = threading.Thread(target=self.api_worker)
+        self.api_worker_thread.daemon = True
+        self.api_worker_thread.start()
+
+        # Make the GUI responsive to the event coming from the ESPHome device 
+        self.Bind(EVT_STALLED_EVENT, self.stalled_handler)
+        self.worker_thread = threading.Thread(target=self.worker)
+        self.worker_thread.daemon = True
+        self.worker_thread.start()
 
         self.Bind(wx.EVT_CLOSE, self.OnCloseFrame)
 
@@ -250,12 +259,19 @@ class Frame(wx.Frame):
         try:
             self.api.switch_command(self.getKeyforId(event.GetId()), True)
         except Exception as e:
-            print(e)
+            self.logger.error(e)
+            self._running = False
+            self.loop.stop()
+            evt = StalledEvent()
+            #post the event
+            wx.PostEvent(self, evt)
 
     def getKeyforId(self, id):
         for ant in self._antennas:
             if ant.btn_id == id:
                 return ant.key
+
+
 
     def worker(self):
         freq = 0
@@ -264,6 +280,7 @@ class Frame(wx.Frame):
         PORT = self.config['rig_connect']['port']
         active_antenna = None
         a = 0
+
         while self._running:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -284,7 +301,7 @@ class Frame(wx.Frame):
                             try:
                                 freq = int(data.decode('utf-8'))
                             except Exception as e:
-                                self.logger.error(e)
+                                self.logger.error(f"{e}")
                                 sleep(1)
                                 continue
 
@@ -304,7 +321,11 @@ class Frame(wx.Frame):
                                     for f in ant.frequencies:
                                         if freq >= f['f_begin'] and freq < f['f_end'] and self.last_freq != freq:
                                             if active_antenna != ant:
-                                                self.api.switch_command(ant.key, True)
+                                                try:
+                                                    self.api.switch_command(ant.key, True)
+                                                except Exception as e:
+                                                    self.logger.error(f"{e}\nWe need to restart the worker and reconnect.")
+                                                    self._running = False
                                             wx.CallAfter(self.status_label.SetLabel, 'For f={:.6f}MHz switching to {} @ {}z\n'.format(freq/1000000.0, ant.name, now.strftime("%H:%M:%S")))
                                             active_antenna = ant
                                             ant_sel = 0
@@ -328,8 +349,13 @@ class Frame(wx.Frame):
                             self.last_freq = freq
                             sleep(1)
             except Exception as e:
-                self.logger.error(e)
+                self.logger.error(f"{e}\nSomething went wrong here!")
             sleep(1)
+        self.loop.stop()
+        evt = StalledEvent()
+        #post the event
+        wx.PostEvent(self, evt)
+        self.logger.debug("Stopped {self.worker.__name__}")
 
     def change_callback(self, state):
         if type(state) is aioesphomeapi.SwitchState:
@@ -347,33 +373,47 @@ class Frame(wx.Frame):
                     break
 
                 i = i + 1
-            #create the event
-            evt = CallbackEvent(rb_id = rb_id, state = state.state, desc = desc)
-            #post the event
-            wx.PostEvent(self, evt)
+            if state.state == True:
+                #create the event
+                evt = CallbackEvent(rb_id = rb_id, state = state.state, desc = desc)
+                #post the event
+                wx.PostEvent(self, evt)
 
-    def gui(self):
+    def api_worker(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop) 
-        asyncio.ensure_future(self.io(subscribe = True))
+        asyncio.ensure_future(self.api_connect(subscribe = True))
         self.loop.run_forever()
+        self.logger.debug("Stopped {self.api_worker.__name__}")
 
-    async def io(self, subscribe = False):
-        self.esp_connect = False
+    async def api_connect(self, subscribe = False):
+        self._esp_connect = False
         self.api = aioesphomeapi.APIClient(address=self.config['esphome']['device'], port=self.config['esphome']['port'], password="", noise_psk=self.config['esphome']['key'])
+        async def on_disconnect(expected_disconnect: bool) -> None:
+            self.logger.debug("disconnected")
+
+        async def on_connect() -> None:
+            self.logger.debug("connected")
+
+        ReconnectLogic(
+            client=self.api,
+            on_disconnect=on_disconnect,
+            on_connect=on_connect
+        )
         try:
             await self.api.connect(login=True)
             if subscribe:
                 self.api.subscribe_states(self.change_callback)
-            self.esp_connect = True
+            self.logger.info(await self.api.device_info())
+            self._esp_connect = True
         except:
             wx.MessageBox('Could not contact the ESPHome device. Will quit here.', 'Error', wx.OK | wx.ICON_ERROR)
             self.loop.stop()
 
     def OnCloseFrame(self, event):
         self._running = False
-        
-        self.loop.stop()
+        sleep(1.5)
+        #self.loop.stop()
         
         self.config['antennas'] = []
 
@@ -385,9 +425,35 @@ class Frame(wx.Frame):
 
         wx.CallAfter(self.Destroy)
 
+
+    def stalled_handler(self, event):
+        self.logger.debug(event)
+        self._running = True
+        self.api_worker_thread = threading.Thread(target=self.api_worker)
+        self.api_worker_thread.daemon = True
+        self.api_worker_thread.start()
+        self.worker_thread = threading.Thread(target=self.worker)
+        self.worker_thread.daemon = True
+        self.worker_thread.start()
+
+
+
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', filename='ant_switcher.log', encoding='utf-8', level=logging.DEBUG)
     app = wx.App(redirect=False)
     top = Frame("Antenna Controller v1.0")
+
+    @scheduler.scheduled_job('cron', hour='0-23', minute='0,10,20,30,40,50')
+    def sync_time():
+        HOST = top.config['rig_connect']['device']
+        PORT = top.config['rig_connect']['port']
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((HOST, PORT))
+            ts = datetime.now(tzlocal.get_localzone()).strftime("%Y-%m-%dT%H:%M:%S%z")
+            s.send(f"\\set_clock {ts}\r\n".encode('utf-8'))
+            top.logger.info(f"Synced rig clock to {ts}")
+            wx.CallAfter(top.status_label.SetLabel, f"Synced rig clock to {ts}")
     top.Show()
+    scheduler.start()
     app.MainLoop()      
+
