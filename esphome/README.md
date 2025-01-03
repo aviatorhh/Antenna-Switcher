@@ -1,0 +1,3 @@
+# ESPHome device as antenna switcher
+
+Mainly that device just switches relays of a antenna switcher board. I will provide more infos ....
