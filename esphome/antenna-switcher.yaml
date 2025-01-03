@@ -1,0 +1,77 @@
+esphome:
+  name: antenna-switcher
+  comment: "Controlls the antenna switching board."
+  friendly_name: Antenna Switcher
+
+esp8266:
+  board: esp01_1m
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "a very secret key here"
+
+ota:
+  - platform: esphome
+    password: "a complicated password"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Antenna-Switcher"
+    password: "s3cr3t"
+
+captive_portal:
+
+web_server:
+  port: 80
+  ota: True
+  version: 2
+
+button:
+  - platform: restart
+    name: "Restart"
+
+switch:
+  - platform: gpio
+    id: antenna1
+    name: "Antenna 1"
+    pin:
+      number: GPIO14
+      inverted: true
+    interlock: &interlock_group [antenna1, antenna2, antenna3, antenna4]
+    #interlock_wait_time: 
+    #  milliseconds: 25
+  - platform: gpio
+    id: antenna2
+    name: "Antenna 2"
+    pin:
+      number: GPIO12
+      inverted: true
+    interlock: *interlock_group
+    #interlock_wait_time: 
+    #  milliseconds: 25
+  - platform: gpio
+    id: antenna3
+    name: "Antenna 3"
+    pin:
+      number: GPIO13
+      inverted: true
+    interlock: *interlock_group
+    #interlock_wait_time: 
+    #  milliseconds: 25
+  - platform: gpio
+    id: antenna4
+    name: "Antenna 4"
+    pin:
+      number: GPIO2
+      inverted: true
+    interlock: *interlock_group
+    #interlock_wait_time: 
+    #  milliseconds: 25
