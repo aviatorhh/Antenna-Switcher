@@ -41,11 +41,11 @@ class Antenna():
     def __str__(self):
         return self.name
    
-    def setBtnId(self, id):
+    def set_btn_id(self, id):
         self.btn_id = id
     
 
-    def getVars(self):
+    def get_vars(self):
         return { 'name': self.name, 'description': self.description, 'key': self.key, 'fallback': self.fallback, 'frequencies': self.frequencies }
 
 class Frame(wx.Frame):
@@ -90,7 +90,7 @@ class Frame(wx.Frame):
         self.logger.info(f"Switched to {evt.desc}")
 
 
-    def menuhandler(self, event): 
+    def menu_handler(self, event): 
         id = event.GetId() 
         self.OnCloseFrame(None)
 
@@ -109,7 +109,7 @@ class Frame(wx.Frame):
 
         self.SetMenuBar(self.menu_bar) 
 
-        self.Bind(wx.EVT_MENU, self.menuhandler)
+        self.Bind(wx.EVT_MENU, self.menu_handler)
 
 
 
@@ -186,7 +186,7 @@ class Frame(wx.Frame):
                 exit(0)
 
         self.logger.debug(self.config)
-        self.cb_auto.Bind(wx.EVT_COMBOBOX, self.onComboBoxSelect)
+        self.cb_auto.Bind(wx.EVT_COMBOBOX, self.on_combobox_select)
 
         
         
@@ -251,8 +251,8 @@ class Frame(wx.Frame):
         i = 0
         for ant in self._antennas:
 
-            self.Bind(wx.EVT_RADIOBUTTON, self.SetVal, id=self.rb[i].GetId())
-            ant.setBtnId(self.rb[i].GetId())
+            self.Bind(wx.EVT_RADIOBUTTON, self.set_val, id=self.rb[i].GetId())
+            ant.set_btn_id(self.rb[i].GetId())
             i = i + 1
         
 
@@ -271,12 +271,12 @@ class Frame(wx.Frame):
 
         self.Bind(wx.EVT_CLOSE, self.OnCloseFrame)
 
-    def onComboBoxSelect(self, event):
+    def on_combobox_select(self, event):
         self.last_freq = 0
             
-    def SetVal(self, event):
+    def set_val(self, event):
         try:
-            self.api.switch_command(self.getKeyforId(event.GetId()), True)
+            self.api.switch_command(self.get_key_for_id(event.GetId()), True)
         except Exception as e:
             self.logger.error(e)
             self._running = False
@@ -285,7 +285,7 @@ class Frame(wx.Frame):
             #post the event
             wx.PostEvent(self, evt)
 
-    def getKeyforId(self, id):
+    def get_key_for_id(self, id):
         for ant in self._antennas:
             if ant.btn_id == id:
                 return ant.key
@@ -437,7 +437,7 @@ class Frame(wx.Frame):
         self.config['antennas'] = []
 
         for ant in self._antennas:
-            self.config['antennas'].append(ant.getVars())    
+            self.config['antennas'].append(ant.get_vars())    
 
         with open(self.config_file, 'w') as file:
             yaml.dump(self.config, file)
