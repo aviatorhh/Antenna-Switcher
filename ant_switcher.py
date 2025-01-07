@@ -308,6 +308,7 @@ class Frame(wx.Frame):
 
     def worker(self):
         freq = 0
+        mode = ""
         self.last_freq = 0
         HOST = self.config['rig_connect']['device']
         PORT = self.config['rig_connect']['port']
@@ -329,17 +330,20 @@ class Frame(wx.Frame):
                             now = datetime.now()
                             wx.CallAfter(self.status_label2.SetLabel, "{}".format(now.strftime("%H:%M:%S")))
                             #print("ping@{}".format(now.strftime("%H:%M:%S")))
-                            s.send(b"f\n")
+                            s.send(b"fm\n")
                             data = x.readline().strip()
                             try:
                                 freq = int(data.decode('utf-8'))
+                                data = x.readline().strip()
+                                mode = str(data.decode('utf-8'))
+                                data = x.readline().strip()
                             except Exception as e:
                                 self.logger.error(f"{e}")
                                 sleep(1)
                                 continue
 
                             if self.last_freq != freq:
-                                wx.CallAfter(self.freq_label_lbl.SetLabel, "{:.6f}MHz".format(freq/1000000.0))
+                                wx.CallAfter(self.freq_label_lbl.SetLabel, "{:.6f}MHz ({})".format(freq/1000000.0, mode))
 
                             fallback_ant = None
                             ant_sel = self.cb_auto.GetSelection()
