@@ -89,11 +89,30 @@ class Frame(wx.Frame):
         self.ant_label_lbl.SetLabel(evt.desc)
         self.logger.info(f"Switched to {evt.desc}")
 
+
+    def menuhandler(self, event): 
+        id = event.GetId() 
+        self.OnCloseFrame(None)
+
     def __init__(self, title):
         self.logger = logging.getLogger(__name__)
-        self.logger.addHandler(RotatingFileHandler('ant_switcher.log', maxBytes=1024 * 1000, backupCount=1))
     
         wx.Frame.__init__(self, None, title=title, size=(400, 300))
+
+
+        self.menu_bar = wx.MenuBar()
+        fileMenu = wx.Menu()
+        quit = wx.MenuItem(fileMenu, wx.ID_EXIT, "Exit", "Close")
+
+        fileMenu.Append(quit)
+        self.menu_bar.Append(fileMenu, 'App')
+
+        self.SetMenuBar(self.menu_bar) 
+
+        self.Bind(wx.EVT_MENU, self.menuhandler)
+
+
+
         panel       = wx.Panel(self)
         info_panel    = wx.Panel(panel)
         self.cb_auto = wx.Choice(info_panel, -1, choices = ['Disregard', 'None'], style = wx.CB_READONLY)
@@ -112,8 +131,6 @@ class Frame(wx.Frame):
             self.config_file = home_file
 
         enter_setup = False
-
-        self.logger.debug(self.config_file)
 
         #config_file = Path("/tmp/")
         if self.config_file.is_file():
@@ -139,6 +156,8 @@ class Frame(wx.Frame):
             self.config['rig_connect'] = {}
             self.config['rig_connect']['device'] = 'localhost'
             self.config['rig_connect']['port']   = 4532
+
+        self.logger.addHandler(RotatingFileHandler(self.config['logging']['logfile'], maxBytes=1024 * 1000, backupCount=1))
 
         if enter_setup:
             td = wx.TextEntryDialog(self, "Please enter the esphome device's hostname or IP address", caption="ESPHome Device Setup",
@@ -439,7 +458,7 @@ class Frame(wx.Frame):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(message)s', filename='ant_switcher.log', encoding='utf-8', level=logging.DEBUG)
+    logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
     app = wx.App(redirect=False)
     top = Frame("Antenna Controller v1.0")
 
