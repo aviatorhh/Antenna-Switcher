@@ -100,7 +100,7 @@ class Frame(wx.Frame):
     def __init__(self, title):
         self.logger = logging.getLogger(__name__)
     
-        wx.Frame.__init__(self, None, title=title, size=(400, 320))
+        wx.Frame.__init__(self, None, title=title, size=(480, 320))
 
 
         self.menu_bar = wx.MenuBar()
