@@ -27,6 +27,7 @@ StalledEvent, EVT_STALLED_EVENT = wx.lib.newevent.NewEvent()
 
 scheduler = BackgroundScheduler()
 
+NONE_BTN = -1
 
 class Antenna():
     fallback = False
@@ -86,18 +87,20 @@ class Frame(wx.Frame):
     def gui_refresh_handler(self, evt):
         ''' We refresh the gui here after an event coming from the ESPHome change '''
         self.rb[evt.rb_id].SetValue(evt.state)
-        self.ant_label_lbl.SetLabel(evt.desc)
-        self.logger.info(f"Switched to {evt.desc}")
+        
+        if evt.state == True:
+            self.ant_label_lbl.SetLabel(evt.desc)
+            self.logger.info(f"Switched to {evt.desc}")
 
 
     def menu_handler(self, event): 
         id = event.GetId() 
-        self.OnCloseFrame(None)
+        self.on_close_frame(None)
 
     def __init__(self, title):
         self.logger = logging.getLogger(__name__)
     
-        wx.Frame.__init__(self, None, title=title, size=(400, 300))
+        wx.Frame.__init__(self, None, title=title, size=(400, 320))
 
 
         self.menu_bar = wx.MenuBar()
@@ -228,7 +231,9 @@ class Frame(wx.Frame):
                 self.rb.append(wx.RadioButton(rb_panel, -1, ant.description))
             rb_sizer.Add(self.rb[i], 1, wx.ALL | wx.EXPAND, 0)
             i = i + 1
-        
+        self.rb.append(wx.RadioButton(rb_panel, -1, "None"))
+        rb_sizer.Add(self.rb[i], 1, wx.ALL | wx.EXPAND, 0)
+
         sts_info_sizer.Add(self.status_label, 1, wx.ALL, 3) 
         sts_info_sizer.Add(self.status_label2, 0, wx.ALL, 3) 
 
@@ -254,7 +259,7 @@ class Frame(wx.Frame):
             self.Bind(wx.EVT_RADIOBUTTON, self.set_val, id=self.rb[i].GetId())
             ant.set_btn_id(self.rb[i].GetId())
             i = i + 1
-        
+        self.Bind(wx.EVT_RADIOBUTTON, self.set_val, id=self.rb[i].GetId())
 
         # Make the GUI responsive to the event coming from the ESPHome device 
         self.Bind(EVT_CALLBACK_EVENT, self.gui_refresh_handler)
@@ -269,28 +274,37 @@ class Frame(wx.Frame):
         self.worker_thread.daemon = True
         self.worker_thread.start()
 
-        self.Bind(wx.EVT_CLOSE, self.OnCloseFrame)
+        self.Bind(wx.EVT_CLOSE, self.on_close_frame)
 
     def on_combobox_select(self, event):
         self.last_freq = 0
             
     def set_val(self, event):
-        try:
-            self.api.switch_command(self.get_key_for_id(event.GetId()), True)
-        except Exception as e:
-            self.logger.error(e)
-            self._running = False
-            self.loop.stop()
-            evt = StalledEvent()
-            #post the event
-            wx.PostEvent(self, evt)
+        key = self.get_key_for_id(event.GetId())
+
+        if key == NONE_BTN:
+            for rb in self.rb:
+                try:
+                    self.api.switch_command(self.get_key_for_id(rb.GetId()), False)
+                except Exception as e:
+                    self.logger.error(e)
+        else:
+
+            try:
+                self.api.switch_command(key, True)
+            except Exception as e:
+                self.logger.error(e)
+                self._running = False
+                self.loop.stop()
+                evt = StalledEvent()
+                #post the event
+                wx.PostEvent(self, evt)
 
     def get_key_for_id(self, id):
         for ant in self._antennas:
             if ant.btn_id == id:
                 return ant.key
-
-
+        return NONE_BTN
 
     def worker(self):
         freq = 0
@@ -384,7 +398,7 @@ class Frame(wx.Frame):
             rb_id = 0
             for ant in self._antennas:
 
-                if state.key == ant.key and len(self.rb) > 0:
+                if state.key == ant.key:
                     #self.rb[i].SetValue(state.state)
                     rb_id = i
                     if state.state == True:
@@ -392,11 +406,11 @@ class Frame(wx.Frame):
                     break
 
                 i = i + 1
-            if state.state == True:
-                #create the event
-                evt = CallbackEvent(rb_id = rb_id, state = state.state, desc = desc)
-                #post the event
-                wx.PostEvent(self, evt)
+            #if state.state == True:
+            #create the event
+            evt = CallbackEvent(rb_id = rb_id, state = state.state, desc = desc)
+            #post the event
+            wx.PostEvent(self, evt)
 
     def api_worker(self):
         self.loop = asyncio.new_event_loop()
@@ -429,7 +443,7 @@ class Frame(wx.Frame):
             wx.MessageBox('Could not contact the ESPHome device. Will quit here.', 'Error', wx.OK | wx.ICON_ERROR)
             self.loop.stop()
 
-    def OnCloseFrame(self, event):
+    def on_close_frame(self, event):
         self._running = False
         sleep(1.5)
         #self.loop.stop()
@@ -444,7 +458,6 @@ class Frame(wx.Frame):
 
         wx.CallAfter(self.Destroy)
 
-
     def stalled_handler(self, event):
         self.logger.debug(event)
         self._running = True
@@ -454,7 +467,6 @@ class Frame(wx.Frame):
         self.worker_thread = threading.Thread(target=self.worker)
         self.worker_thread.daemon = True
         self.worker_thread.start()
-
 
 
 if __name__ == '__main__':
