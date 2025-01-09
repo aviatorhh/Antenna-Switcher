@@ -109,7 +109,7 @@ class Frame(wx.Frame):
         fileMenu = wx.Menu()
         utilsMenu = wx.Menu()
         self.quit = wx.MenuItem(fileMenu, wx.ID_EXIT, "Exit", "Close")
-        self.utils = wx.MenuItem(utilsMenu, wx.ID_ANY, "Sync rig clock", kind = wx.ITEM_CHECK)
+        self.utils = wx.MenuItem(utilsMenu, wx.ID_ANY, "Sync Rig Clock", kind = wx.ITEM_CHECK)
 
         fileMenu.Append(self.quit)
         utilsMenu.Append(self.utils)
@@ -197,10 +197,7 @@ class Frame(wx.Frame):
 
         self.utils.Check(self.config['sync_clock'])
 
-
         self.cb_auto.Bind(wx.EVT_COMBOBOX, self.on_combobox_select)
-
-        
         
         rb_panel    = wx.Panel(panel)
         
@@ -210,6 +207,10 @@ class Frame(wx.Frame):
         
         freq_label_text = wx.StaticText(info_panel, label = "Frequency:", style = wx.ALIGN_LEFT)
         self.freq_label_lbl = wx.StaticText(info_panel, label = "-.------MHz", style = wx.ALIGN_CENTER)
+        f = self.freq_label_lbl.GetFont()
+        f.SetFaceName("DejaVu Sans Mono")
+        self.freq_label_lbl.SetFont(f)
+
         ant_label_text = wx.StaticText(info_panel, label = "Active Antenna:", style = wx.ALIGN_LEFT)
         self.ant_label_lbl = wx.StaticText(info_panel, label = "", style = wx.ALIGN_CENTER)
         fallback_text = wx.StaticText(info_panel, label = "Fallback:", style = wx.ALIGN_LEFT)
@@ -270,6 +271,7 @@ class Frame(wx.Frame):
         self.worker_thread.daemon = True
         self.worker_thread.start()
 
+        
         self.Bind(wx.EVT_CLOSE, self.on_close_frame)
 
     def on_combobox_select(self, event):
