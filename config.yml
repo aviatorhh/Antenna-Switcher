@@ -14,6 +14,7 @@ antennas:
   key: 655527339
   name: Antenna 4
 autoswitch: true
+sync_clock: false
 esphome:
   device: antenna-switcher.local
   key: <top secret>

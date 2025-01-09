@@ -95,9 +95,14 @@ class Frame(wx.Frame):
 
     def menu_handler(self, event): 
         id = event.GetId() 
-        self.on_close_frame(None)
+
+        #print(self.utils.IsChecked())
+        #print(event.IsChecked())
+        if id == self.quit.GetId():
+            self.on_close_frame(None)
 
     def __init__(self, title):
+        self.locale = wx.Locale(wx.LANGUAGE_ENGLISH)
         self.logger = logging.getLogger(__name__)
     
         wx.Frame.__init__(self, None, title=title, size=(480, 320))
@@ -105,16 +110,19 @@ class Frame(wx.Frame):
 
         self.menu_bar = wx.MenuBar()
         fileMenu = wx.Menu()
-        quit = wx.MenuItem(fileMenu, wx.ID_EXIT, "Exit", "Close")
+        utilsMenu = wx.Menu()
+        self.quit = wx.MenuItem(fileMenu, wx.ID_EXIT, "Exit", "Close")
+        self.utils = wx.MenuItem(utilsMenu, wx.ID_ANY, "Sync rig clock", kind = wx.ITEM_CHECK)
 
-        fileMenu.Append(quit)
+        fileMenu.Append(self.quit)
+        utilsMenu.Append(self.utils)
         self.menu_bar.Append(fileMenu, 'App')
+        self.menu_bar.Append(utilsMenu, 'Utils')
 
+        
         self.SetMenuBar(self.menu_bar) 
 
         self.Bind(wx.EVT_MENU, self.menu_handler)
-
-
 
         panel       = wx.Panel(self)
         info_panel    = wx.Panel(panel)
@@ -189,6 +197,10 @@ class Frame(wx.Frame):
                 exit(0)
 
         self.logger.debug(self.config)
+
+        self.utils.Check(self.config['sync_clock'])
+
+
         self.cb_auto.Bind(wx.EVT_COMBOBOX, self.on_combobox_select)
 
         
@@ -306,6 +318,11 @@ class Frame(wx.Frame):
                 return ant.key
         return NONE_BTN
 
+
+    def is_number_repl_isdigit(self, s):
+        """ Returns True if string is a number. """
+        return s.replace('.','',1).isdigit()
+
     def worker(self):
         freq = 0
         mode = ""
@@ -329,18 +346,21 @@ class Frame(wx.Frame):
                             
                             now = datetime.now()
                             wx.CallAfter(self.status_label2.SetLabel, "{}".format(now.strftime("%H:%M:%S")))
-                            #print("ping@{}".format(now.strftime("%H:%M:%S")))
                             s.send(b"fm\n")
                             data = x.readline().strip()
                             try:
                                 freq = int(data.decode('utf-8'))
                                 data = x.readline().strip()
+                                if self.is_number_repl_isdigit(data.decode('utf-8')):
+                                    raise Exception(f"{data} should not be a number")
                                 mode = str(data.decode('utf-8'))
                                 data = x.readline().strip()
                             except Exception as e:
                                 self.logger.error(f"{e}")
+                                s.shutdown(socket.SHUT_RDWR)
+                                s.close()
                                 sleep(1)
-                                continue
+                                raise Exception("Read error")
 
                             if self.last_freq != freq:
                                 wx.CallAfter(self.freq_label_lbl.SetLabel, "{:.6f}MHz ({})".format(freq/1000000.0, mode))
@@ -457,6 +477,8 @@ class Frame(wx.Frame):
         for ant in self._antennas:
             self.config['antennas'].append(ant.get_vars())    
 
+        self.config['sync_clock'] = self.utils.IsChecked()
+
         with open(self.config_file, 'w') as file:
             yaml.dump(self.config, file)
 
@@ -480,14 +502,15 @@ if __name__ == '__main__':
 
     @scheduler.scheduled_job('cron', hour='0-23', minute='0,10,20,30,40,50')
     def sync_time():
-        HOST = top.config['rig_connect']['device']
-        PORT = top.config['rig_connect']['port']
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((HOST, PORT))
-            ts = datetime.now(tzlocal.get_localzone()).strftime("%Y-%m-%dT%H:%M:%S%z")
-            s.send(f"\\set_clock {ts}\r\n".encode('utf-8'))
-            top.logger.info(f"Synced rig clock to {ts}")
-            wx.CallAfter(top.status_label.SetLabel, f"Synced rig clock to {ts}")
+        if top.utils.IsChecked():
+            HOST = top.config['rig_connect']['device']
+            PORT = top.config['rig_connect']['port']
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((HOST, PORT))
+                ts = datetime.now(tzlocal.get_localzone()).strftime("%Y-%m-%dT%H:%M:%S%z")
+                s.send(f"\\set_clock {ts}\r\n".encode('utf-8'))
+                top.logger.info(f"Synced rig clock to {ts}")
+                wx.CallAfter(top.status_label.SetLabel, f"Synced rig clock to {ts}")
     top.Show()
     scheduler.start()
     app.MainLoop()      
