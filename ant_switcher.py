@@ -96,8 +96,6 @@ class Frame(wx.Frame):
     def menu_handler(self, event): 
         id = event.GetId() 
 
-        #print(self.utils.IsChecked())
-        #print(event.IsChecked())
         if id == self.quit.GetId():
             self.on_close_frame(None)
 
@@ -105,8 +103,7 @@ class Frame(wx.Frame):
         self.locale = wx.Locale(wx.LANGUAGE_ENGLISH)
         self.logger = logging.getLogger(__name__)
     
-        wx.Frame.__init__(self, None, title=title, size=(480, 320))
-
+        wx.Frame.__init__(self, None, title=title, size=(480, 320), style=wx.CAPTION | wx.SYSTEM_MENU | wx.CLOSE_BOX)
 
         self.menu_bar = wx.MenuBar()
         fileMenu = wx.Menu()
@@ -206,25 +203,24 @@ class Frame(wx.Frame):
         
         
         rb_panel    = wx.Panel(panel)
-        status_panel  = wx.Panel(panel , style= wx.BORDER_SIMPLE)
-
+        
         main_sizer    = wx.BoxSizer(wx.VERTICAL) 
-        #panel_sizer = wx.BoxSizer(wx.VERTICAL) 
         rb_sizer    = wx.BoxSizer(wx.VERTICAL) 
         info_sizer   = wx.GridSizer(rows=4, cols=2, hgap=0, vgap=0)
-        sts_info_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
+        
         freq_label_text = wx.StaticText(info_panel, label = "Frequency:", style = wx.ALIGN_LEFT)
         self.freq_label_lbl = wx.StaticText(info_panel, label = "-.------MHz", style = wx.ALIGN_CENTER)
         ant_label_text = wx.StaticText(info_panel, label = "Active Antenna:", style = wx.ALIGN_LEFT)
         self.ant_label_lbl = wx.StaticText(info_panel, label = "", style = wx.ALIGN_CENTER)
         fallback_text = wx.StaticText(info_panel, label = "Fallback:", style = wx.ALIGN_LEFT)
 
-        self.status_label = wx.StaticText(status_panel, label = "Trying to connect to the antenna switcher ...", style = wx.ST_ELLIPSIZE_END | wx.ALIGN_LEFT)
-        self.status_label2 = wx.StaticText(status_panel, label = "99:99:99", style = wx.ALIGN_RIGHT)
+        self.status_bar = self.CreateStatusBar(2)
+        self.status_bar.SetStatusWidths([-1, 80])
+        self.status_bar.SetStatusText("Trying to connect to the antenna switcher ...")
+        self.status_bar.SetStatusText("", 1)
+
         self.auto_cb = wx.CheckBox(info_panel, -1, 'Autoswitch', (10, 10))
         self.auto_cb.SetValue(self.config['autoswitch'])
-
 
         info_sizer.Add(freq_label_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
         info_sizer.Add(self.freq_label_lbl, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
@@ -246,24 +242,12 @@ class Frame(wx.Frame):
         self.rb.append(wx.RadioButton(rb_panel, -1, "None"))
         rb_sizer.Add(self.rb[i], 1, wx.ALL | wx.EXPAND, 0)
 
-        sts_info_sizer.Add(self.status_label, 1, wx.ALL, 3) 
-        sts_info_sizer.Add(self.status_label2, 0, wx.ALL, 3) 
-
-        #self.editname = wx.TextCtrl(panel, size=(140, 40), style= wx.TE_MULTILINE | wx.SUNKEN_BORDER)
-        #panel_sizer.Add(self.editname, 1, wx.ALL | wx.EXPAND, 5) 
-        
         info_panel.SetSizer(info_sizer)
-        #panel.SetSizer(panel_sizer)
         rb_panel.SetSizer(rb_sizer)
-        status_panel.SetSizer(sts_info_sizer)
-
+        
         main_sizer.Add(info_panel, 0, wx.ALL | wx.EXPAND, 5)
-        #main_sizer.Add(panel, 1, wx.ALL | wx.EXPAND, 5) 
         main_sizer.Add(rb_panel, 0, wx.ALL | wx.EXPAND, 5) 
-        main_sizer.Add(status_panel, 0, wx.ALL | wx.EXPAND, 0) 
         panel.SetSizerAndFit(main_sizer)
-        #self.SetSizer(main_sizer)
-
         
         i = 0
         for ant in self._antennas:
@@ -335,17 +319,17 @@ class Frame(wx.Frame):
         while self._running:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                        wx.CallAfter(self.status_label.SetLabel, f"Connecting to rigctl on {HOST}:{PORT}")
+                        wx.CallAfter(self.status_bar.SetStatusText, f"Connecting to rigctl on {HOST}:{PORT}")
                         sleep(3)
                         s.settimeout(3)
                         s.connect((HOST, PORT))
                         x = s.makefile("rb")
 
-                        wx.CallAfter(self.status_label.SetLabel, f"Connected to rigctl on {HOST}:{PORT}")
+                        wx.CallAfter(self.status_bar.SetStatusText, f"Connected to rigctl on {HOST}:{PORT}")
                         while self._running:
                             
                             now = datetime.now()
-                            wx.CallAfter(self.status_label2.SetLabel, "{}".format(now.strftime("%H:%M:%S")))
+                            wx.CallAfter(self.status_bar.SetStatusText, "{}".format(now.strftime("%H:%M:%S")), 1)
                             s.send(b"fm\n")
                             data = x.readline().strip()
                             try:
@@ -383,7 +367,7 @@ class Frame(wx.Frame):
                                                 except Exception as e:
                                                     self.logger.error(f"{e}\nWe need to restart the worker and reconnect.")
                                                     self._running = False
-                                            wx.CallAfter(self.status_label.SetLabel, 'For f={:.6f}MHz switching to {} @ {}z\n'.format(freq/1000000.0, ant.name, now.strftime("%H:%M:%S")))
+                                            wx.CallAfter(self.status_bar.SetStatusText, 'For f={:.6f}MHz switching to {} @ {}z\n'.format(freq/1000000.0, ant.name, now.strftime("%H:%M:%S")))
                                             active_antenna = ant
                                             ant_sel = 0
                                             break
@@ -393,15 +377,15 @@ class Frame(wx.Frame):
                                         for ant in self._antennas:
                                             self.api.switch_command(ant.key, False)
                                         active_antenna = None
-                                        wx.CallAfter(self.status_label.SetLabel, 'No Antennas\n')
+                                        wx.CallAfter(self.status_bar.SetStatusText, 'No Antennas\n')
                                         wx.CallAfter(self.ant_label_lbl.SetLabel, 'None')
                                     else:
                                         self.api.switch_command(fallback_ant.key, True)
-                                        wx.CallAfter(self.status_label.SetLabel, 'For f={:.6f}MHz switching to {} @ {}z\n'.format(freq/1000000.0, fallback_ant.name, now.strftime("%H:%M:%S")))
+                                        wx.CallAfter(self.status_bar.SetStatusText, 'For f={:.6f}MHz switching to {} @ {}z\n'.format(freq/1000000.0, fallback_ant.name, now.strftime("%H:%M:%S")))
                                         active_antenna = fallback_ant
                                 
                             elif self.last_freq != freq:
-                                wx.CallAfter(self.status_label.SetLabel, 'Autoswitch is off')
+                                wx.CallAfter(self.status_bar.SetStatusText, 'Autoswitch is off')
 
                             self.last_freq = freq
                             sleep(1)
@@ -423,7 +407,6 @@ class Frame(wx.Frame):
             for ant in self._antennas:
 
                 if state.key == ant.key:
-                    #self.rb[i].SetValue(state.state)
                     rb_id = i
                     if state.state == True:
                         desc = ant.description
@@ -510,7 +493,7 @@ if __name__ == '__main__':
                 ts = datetime.now(tzlocal.get_localzone()).strftime("%Y-%m-%dT%H:%M:%S%z")
                 s.send(f"\\set_clock {ts}\r\n".encode('utf-8'))
                 top.logger.info(f"Synced rig clock to {ts}")
-                wx.CallAfter(top.status_label.SetLabel, f"Synced rig clock to {ts}")
+                wx.CallAfter(top.status_bar.PopStatusText, f"Synced rig clock to {ts}")
     top.Show()
     scheduler.start()
     app.MainLoop()      
