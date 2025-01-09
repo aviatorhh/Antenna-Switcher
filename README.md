@@ -16,6 +16,6 @@ It is a program that controls a ESPHome device to switch antennas remotely. The 
 
 It has a GUI based on wxWidgets (wxPython).
 
-![image](https://github.com/user-attachments/assets/02ae5e82-feea-4710-b26c-0294aea4eb85)
+![image](https://github.com/user-attachments/assets/2a7fb5c5-4134-419e-a74e-243173e8fb1f)
 
 As it is based on python, it can be run on all major platforms. You need a ESPHome device (e.g. ESP32 based board like a NodeMCU).
