@@ -22,6 +22,8 @@ import yaml
 from pathlib import Path
 import  wx.lib.newevent
 
+from settings_frame import SettingsFrame
+
 CallbackEvent, EVT_CALLBACK_EVENT = wx.lib.newevent.NewEvent()
 StalledEvent, EVT_STALLED_EVENT = wx.lib.newevent.NewEvent()
 
@@ -49,7 +51,7 @@ class Antenna():
     def get_vars(self):
         return { 'name': self.name, 'description': self.description, 'key': self.key, 'fallback': self.fallback, 'frequencies': self.frequencies }
 
-class Frame(wx.Frame):
+class MainFrame(wx.Frame):
 
     _antennas = []
     _running = False
@@ -99,6 +101,10 @@ class Frame(wx.Frame):
         if id == self.quit.GetId():
             self.on_close_frame(None)
 
+        if id == self.settings.GetId():
+            sf = SettingsFrame("Settings")
+            sf.Show()
+
     def __init__(self, title):
         self.locale = wx.Locale(wx.LANGUAGE_ENGLISH)
         self.logger = logging.getLogger(__name__)
@@ -110,9 +116,11 @@ class Frame(wx.Frame):
         utilsMenu = wx.Menu()
         self.quit = wx.MenuItem(fileMenu, wx.ID_EXIT, "Exit", "Close")
         self.utils = wx.MenuItem(utilsMenu, wx.ID_ANY, "Sync Rig Clock", kind = wx.ITEM_CHECK)
+        self.settings = wx.MenuItem(utilsMenu, wx.ID_ANY, "Settings")
 
         fileMenu.Append(self.quit)
         utilsMenu.Append(self.utils)
+        utilsMenu.Append(self.settings)
         self.menu_bar.Append(fileMenu, 'App')
         self.menu_bar.Append(utilsMenu, 'Utils')
 
@@ -342,7 +350,7 @@ class Frame(wx.Frame):
                                 mode = str(data.decode('utf-8'))
                                 data = x.readline().strip()
                             except Exception as e:
-                                self.logger.error(f"{e}")
+                                self.logger.error(f"The rig communication has failed\n{e}")
                                 s.shutdown(socket.SHUT_RDWR)
                                 s.close()
                                 sleep(1)
@@ -392,7 +400,7 @@ class Frame(wx.Frame):
                             self.last_freq = freq
                             sleep(1)
             except Exception as e:
-                self.logger.error(f"{e}\nSomething went wrong here!")
+                self.logger.error(f"Something went wrong talking to the rig!\n{e}")
             sleep(1)
         self.loop.stop()
         evt = StalledEvent()
@@ -483,7 +491,7 @@ class Frame(wx.Frame):
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
     app = wx.App(redirect=False)
-    top = Frame("Antenna Controller v1.0")
+    top = MainFrame("Antenna Controller v1.1")
 
     @scheduler.scheduled_job('cron', hour='0-23', minute='0,10,20,30,40,50')
     def sync_time():
