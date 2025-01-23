@@ -59,6 +59,7 @@ class MainFrame(wx.Frame):
     rb = []
     config = {}
     config_file = None
+    _ant_response_count = 0
 
     async def setup(self):
             try:
@@ -88,8 +89,19 @@ class MainFrame(wx.Frame):
 
     def gui_refresh_handler(self, evt):
         ''' We refresh the gui here after an event coming from the ESPHome change '''
+        self._ant_response_count = self._ant_response_count + 1
+        ''' first set none if false 
+        This is done because the radio button group cannot have no state
+        '''
+        if evt.state == False and self._ant_response_count >= len(self.rb):
+            self.rb[evt.rb_id].SetValue(False)
+            self.rb[len(self.rb) - 1].SetValue(True)
+            return
+
         self.rb[evt.rb_id].SetValue(evt.state)
-        
+        self.rb[evt.rb_id].Enable()
+
+        self.logger.info(f"Got state {evt.state} of {evt.desc} for {evt.rb_id}")
         if evt.state == True:
             self.ant_label_lbl.SetLabel(evt.desc)
             self.logger.info(f"Switched to {evt.desc}")
@@ -109,7 +121,7 @@ class MainFrame(wx.Frame):
         self.locale = wx.Locale(wx.LANGUAGE_ENGLISH)
         self.logger = logging.getLogger(__name__)
     
-        wx.Frame.__init__(self, None, title=title, size=(480, 320), style=wx.CAPTION | wx.SYSTEM_MENU | wx.CLOSE_BOX)
+        wx.Frame.__init__(self, None, title=title, size=(480, 348), style=wx.CAPTION | wx.SYSTEM_MENU | wx.CLOSE_BOX)
 
         self.menu_bar = wx.MenuBar()
         fileMenu = wx.Menu()
@@ -247,9 +259,13 @@ class MainFrame(wx.Frame):
             else:
                 self.rb.append(wx.RadioButton(rb_panel, -1, ant.description))
             rb_sizer.Add(self.rb[i], 1, wx.ALL | wx.EXPAND, 0)
+            self.rb[i].Disable()
             i = i + 1
+
         self.rb.append(wx.RadioButton(rb_panel, -1, "None"))
         rb_sizer.Add(self.rb[i], 1, wx.ALL | wx.EXPAND, 0)
+        # Initially set the None state as we do not know by now
+        self.rb[len(self.rb)-1].SetValue(True) 
 
         info_panel.SetSizer(info_sizer)
         rb_panel.SetSizer(rb_sizer)
