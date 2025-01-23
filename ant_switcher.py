@@ -96,6 +96,7 @@ class MainFrame(wx.Frame):
         if evt.state == False and self._ant_response_count >= len(self.rb):
             self.rb[evt.rb_id].SetValue(False)
             self.rb[len(self.rb) - 1].SetValue(True)
+            self.ant_label_lbl.SetLabel("")
             return
 
         self.rb[evt.rb_id].SetValue(evt.state)
@@ -121,7 +122,7 @@ class MainFrame(wx.Frame):
         self.locale = wx.Locale(wx.LANGUAGE_ENGLISH)
         self.logger = logging.getLogger(__name__)
     
-        wx.Frame.__init__(self, None, title=title, size=(480, 348), style=wx.CAPTION | wx.SYSTEM_MENU | wx.CLOSE_BOX)
+        wx.Frame.__init__(self, None, title=title, size=(480, 360), style=wx.CAPTION | wx.SYSTEM_MENU | wx.CLOSE_BOX)
 
         self.menu_bar = wx.MenuBar()
         fileMenu = wx.Menu()
