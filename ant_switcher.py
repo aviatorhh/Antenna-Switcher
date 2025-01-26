@@ -118,6 +118,9 @@ class MainFrame(wx.Frame):
             sf = SettingsFrame("Settings")
             sf.Show()
 
+    def on_autoswitch_select(self, event):
+        self.config['autoswitch'] = self.auto_cb.GetValue()
+
     def __init__(self, title):
         self.locale = wx.Locale(wx.LANGUAGE_ENGLISH)
         self.logger = logging.getLogger(__name__)
@@ -243,6 +246,7 @@ class MainFrame(wx.Frame):
 
         self.auto_cb = wx.CheckBox(info_panel, -1, 'Autoswitch', (10, 10))
         self.auto_cb.SetValue(self.config['autoswitch'])
+        self.auto_cb.Bind(wx.EVT_CHECKBOX, self.on_autoswitch_select)
 
         info_sizer.Add(freq_label_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
         info_sizer.Add(self.freq_label_lbl, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
