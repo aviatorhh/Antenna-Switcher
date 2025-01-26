@@ -24,6 +24,11 @@ import  wx.lib.newevent
 
 from settings_frame import SettingsFrame
 
+V_MAJOR = 1
+V_MINOR = 1
+V_BUILD = 15
+
+
 CallbackEvent, EVT_CALLBACK_EVENT = wx.lib.newevent.NewEvent()
 StalledEvent, EVT_STALLED_EVENT = wx.lib.newevent.NewEvent()
 
@@ -512,7 +517,7 @@ class MainFrame(wx.Frame):
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
     app = wx.App(redirect=False)
-    top = MainFrame("Antenna Controller v1.1")
+    top = MainFrame(f"Antenna Controller v{V_MAJOR}.{V_MINOR}.{V_BUILD}")
 
     @scheduler.scheduled_job('cron', hour='0-23', minute='0,10,20,30,40,50')
     def sync_time():
