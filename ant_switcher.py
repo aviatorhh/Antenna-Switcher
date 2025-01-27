@@ -26,7 +26,7 @@ from settings_frame import SettingsFrame
 
 V_MAJOR = 1
 V_MINOR = 1
-V_BUILD = 15
+V_BUILD = 16
 
 
 CallbackEvent, EVT_CALLBACK_EVENT = wx.lib.newevent.NewEvent()
@@ -257,10 +257,10 @@ class MainFrame(wx.Frame):
         info_sizer.Add(self.freq_label_lbl, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
         info_sizer.Add(ant_label_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
         info_sizer.Add(self.ant_label_lbl, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-        info_sizer.Add(self.auto_cb, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-        info_sizer.Add((0,0))
         info_sizer.Add(fallback_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
         info_sizer.Add(self.cb_auto, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+        info_sizer.Add(self.auto_cb, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+        info_sizer.Add((0,0))
         
         i = 0
         for ant in self._antennas:
