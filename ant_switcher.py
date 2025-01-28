@@ -21,16 +21,19 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import yaml
 from pathlib import Path
 import  wx.lib.newevent
-
+import socket
+import struct
+import uuid
 from settings_frame import SettingsFrame
 
 V_MAJOR = 1
 V_MINOR = 1
-V_BUILD = 16
+V_BUILD = 17
 
 
 CallbackEvent, EVT_CALLBACK_EVENT = wx.lib.newevent.NewEvent()
 StalledEvent, EVT_STALLED_EVENT = wx.lib.newevent.NewEvent()
+ConfigChangedEvent = wx.lib.newevent.NewEvent()
 
 scheduler = BackgroundScheduler()
 
@@ -65,6 +68,7 @@ class MainFrame(wx.Frame):
     config = {}
     config_file = None
     _ant_response_count = 0
+    _uuid = 0
 
     async def setup(self):
             try:
@@ -125,6 +129,37 @@ class MainFrame(wx.Frame):
 
     def on_autoswitch_select(self, event):
         self.config['autoswitch'] = self.auto_cb.GetValue()
+        MCAST_GRP = '224.1.1.1'
+        MCAST_PORT = 5007
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 32)
+        sock.sendto(f"{{ \"id\": \"{self._uuid}\", \"autoswitch\":\"{self.config['autoswitch']}\" }}".encode('utf-8'), (MCAST_GRP, MCAST_PORT))
+
+
+    def config_listener(self):
+        MCAST_GRP = '224.1.1.1'
+        MCAST_PORT = 5007
+        IS_ALL_GROUPS = True
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if IS_ALL_GROUPS:
+            # on this port, receives ALL multicast groups
+            sock.bind(('', MCAST_PORT))
+        else:
+            # on this port, listen ONLY to MCAST_GRP
+            sock.bind((MCAST_GRP, MCAST_PORT))
+        mreq = struct.pack("4sl", socket.inet_aton(MCAST_GRP), socket.INADDR_ANY)
+
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+        while True:
+          
+          str1 = sock.recv(10240)
+          print(str1)
+          data = json.loads(str1.decode('utf-8'))
+          if data['id'] != self._uuid:
+            print(data)
 
     def __init__(self, title):
         self.locale = wx.Locale(wx.LANGUAGE_ENGLISH)
@@ -304,6 +339,11 @@ class MainFrame(wx.Frame):
         self.worker_thread = threading.Thread(target=self.worker)
         self.worker_thread.daemon = True
         self.worker_thread.start()
+
+        self._uuid = uuid.uuid4().hex
+        self.config_listener_thread = threading.Thread(target=self.config_listener)
+        self.config_listener_thread.daemon = True
+        self.config_listener_thread.start()
 
         
         self.Bind(wx.EVT_CLOSE, self.on_close_frame)
